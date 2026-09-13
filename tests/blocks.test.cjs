@@ -34,9 +34,22 @@ test('repeat compiles nested bodies for the same safety gate and workspace round
 
 test('wait and message validation cannot inject SDK commands or bypass duration limit', async () => {
   const { validateProgram } = await import('../shared/safety.js')
-  for (const middle of [[{ type: 'wait', milliseconds: -1 }], [{ type: 'message', text: 42 }], [{ type: 'wait', milliseconds: 30000 }, { type: 'wait', milliseconds: 30000 }]]) {
+  for (const middle of [[{ type: 'wait', milliseconds: -1 }], [{ type: 'message', text: 42 }], Array.from({ length: 10 }, () => ({ type: 'wait', milliseconds: 30000 }))]) {
     assert.ok(validateProgram({ version: 1, steps: [{ type: 'takeoff' }, ...middle, { type: 'land' }] }).length)
   }
+})
+
+test('program duration accepts five minutes and rejects anything longer', async () => {
+  const { validateProgram } = await import('../shared/safety.js')
+  const program = milliseconds => ({ version: 1, steps: [
+    { type: 'takeoff' },
+    ...Array.from({ length: 9 }, () => ({ type: 'wait', milliseconds: 30000 })),
+    { type: 'wait', milliseconds },
+    { type: 'land' },
+  ] })
+  // Takeoff and landing contribute 20 seconds to the estimate.
+  assert.deepEqual(validateProgram(program(10000)), [])
+  assert.ok(validateProgram(program(10100)).some(error => error.includes('5分以内')))
 })
 
 test('fixed movement blocks compile to safe speed and flight commands', async () => {
