@@ -30,6 +30,19 @@ test('validated flight commands are serialized', async () => {
   const { tello, commands } = await fixture()
   try { await tello.run(program); assert.deepEqual(commands, ['command', 'speed 20', 'takeoff', 'forward 50', 'land']); assert.equal(tello.state.flight, 'grounded') } finally { tello.close() }
 })
+
+test('left and right turns send the requested SDK direction and angle', async () => {
+  const { tello, commands } = await fixture()
+  try {
+    await tello.run({ version: 1, steps: [
+      { type: 'takeoff' },
+      { type: 'turn', direction: 'left', degrees: 90 },
+      { type: 'turn', direction: 'right', degrees: 90 },
+      { type: 'land' },
+    ] })
+    assert.deepEqual(commands, ['command', 'speed 20', 'takeoff', 'ccw 90', 'cw 90', 'land'])
+  } finally { tello.close() }
+})
 test('speed and flip blocks use their SDK commands in sequence', async () => {
   const { tello, commands } = await fixture()
   const advanced = { version: 1, steps: [{ type: 'speed', speed: 50 }, { type: 'takeoff' }, { type: 'move', direction: 'up', distance: 20 }, { type: 'flip', direction: 'forward' }, { type: 'land' }] }
