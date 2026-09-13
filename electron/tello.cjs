@@ -139,7 +139,7 @@ class Tello {
     if (errors.length) throw new Error(errors.join('\n'))
     if (program.steps.some(step => step.type === 'photo') && (!this.video || !this.photoFolder)) throw new Error('写真の保存先を選んでください。')
     this.busy = true; this.cancelled = false; this.state.execution = 'running'
-    const deadline = setTimeout(() => this.fail('実行が60秒を超えました。機体を確認してください。'), 60000)
+    const deadline = setTimeout(() => this.fail('実行が5分を超えました。機体を確認してください。'), 300000)
     try {
       // Explicit speed makes the duration estimate independent of previous SDK sessions.
       await this.command('speed 20')

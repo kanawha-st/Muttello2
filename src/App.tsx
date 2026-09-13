@@ -16,13 +16,21 @@ type RunState = 'idle' | 'running' | 'complete' | 'warning'
 type Point = { x: number; y: number }
 type FlightState = Point & { altitude: number; heading: number }
 
-const initialFlightState: FlightState = { x: 50, y: 76, altitude: 0, heading: 0 }
+type MissionId = typeof missions[number]['id']
+type Course = { start: Point; mountain?: Point; goal?: Point; cone?: Point; scale: number; description: string }
+
+function missionCourse(id: MissionId): Course {
+  if (id === 'goal') return { start: { x: 50, y: 76 }, goal: { x: 50, y: 36 }, scale: 0.4, description: '山なし・スタートの1m先がゴール' }
+  if (id === 'over-mountain') return { start: { x: 50, y: 76 }, mountain: { x: 50, y: 56 }, goal: { x: 50, y: 36 }, scale: 0.4, description: 'スタートの50cm先に山・1m先がゴール' }
+  if (id === 'time-attack') return { start: { x: 59, y: 80 }, cone: { x: 50, y: 26 }, scale: 0.18, description: 'コーンの中心線から右50cmにスタート・前方3mに三角コーン' }
+  return { start: { x: 70, y: 70 }, mountain: { x: 50, y: 50 }, scale: 0.4, description: '山の右50cm・後ろ50cmからスタート（ゴールなし）' }
+}
 
 function normalizeHeading(heading: number) {
   return ((heading % 360) + 360) % 360
 }
 
-function simulateFlight(steps: DroneStep[]) {
+function simulateFlight(steps: DroneStep[], initialFlightState: FlightState, scale: number) {
   const states: FlightState[] = []
   const state = { ...initialFlightState }
 
@@ -30,16 +38,15 @@ function simulateFlight(steps: DroneStep[]) {
     if (step.type === 'takeoff') state.altitude = 80
     if (step.type === 'land') state.altitude = 0
     if (step.type === 'turn') {
-      state.heading = normalizeHeading(
-        state.heading + (step.direction === 'right' ? step.degrees : -step.degrees),
-      )
+      // Keep signed, cumulative angles so CSS animates in the commanded direction.
+      state.heading += step.direction === 'right' ? step.degrees : -step.degrees
     }
 
     if (step.type === 'move') {
       if (step.direction === 'up') state.altitude = Math.min(250, state.altitude + step.distance)
       if (step.direction === 'down') state.altitude = Math.max(0, state.altitude - step.distance)
 
-      const distance = step.distance / 100 * 9
+      const distance = step.distance * scale
       const radians = state.heading * Math.PI / 180
       const forward = { x: Math.sin(radians), y: -Math.cos(radians) }
       const right = { x: Math.cos(radians), y: Math.sin(radians) }
@@ -96,6 +103,7 @@ function App() {
   const isConnected = drone?.connected ?? false
   const [isRunning, setIsRunning] = useState(false)
   const [missionId, setMissionId] = useState<typeof missions[number]['id']>(missions[0].id)
+  const [startHeadings, setStartHeadings] = useState<Partial<Record<MissionId, number>>>({})
   const [completedMissionIds, setCompletedMissionIds] = useState<string[]>([])
   const missionWorkspacesRef = useRef<
     Record<string, ReturnType<typeof Blockly.serialization.workspaces.save>>
@@ -141,7 +149,11 @@ function App() {
 
   function saveProject() {
     if (!workspaceRef.current) return
-    const data = { version: 1, workspace: Blockly.serialization.workspaces.save(workspaceRef.current) }
+    const workspaces = {
+      ...missionWorkspacesRef.current,
+      [missionId]: Blockly.serialization.workspaces.save(workspaceRef.current),
+    }
+    const data = { version: 2, missionId, workspaces }
     const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }))
     const link = document.createElement('a'); link.href = url; link.download = 'muttello2.json'; link.click()
     setTimeout(() => URL.revokeObjectURL(url), 1000)
@@ -153,8 +165,13 @@ function App() {
     try {
       if (file.size > 1024 * 1024) throw new Error('ファイルは1MB以内にしてください。')
       const data = JSON.parse(await file.text())
-      if (data.version !== 1 || !data.workspace || typeof data.workspace !== 'object') throw new Error('対応していないプロジェクト形式です。')
-      Blockly.serialization.workspaces.load(data.workspace, workspace)
+      if (data.version !== 2 || !data.workspaces || typeof data.workspaces !== 'object') throw new Error('対応していないプロジェクト形式です。')
+      missionWorkspacesRef.current = data.workspaces
+      const targetMissionId = missions.some((mission) => mission.id === data.missionId) ? data.missionId : missions[0].id
+      const targetWorkspace = missionWorkspacesRef.current[targetMissionId]
+      workspace.clear()
+      if (targetWorkspace) Blockly.serialization.workspaces.load(targetWorkspace, workspace)
+      setMissionId(targetMissionId)
       extractSteps(workspace)
       resetRun()
     } catch (error) { Blockly.serialization.workspaces.load(previous, workspace); setHardwareMessage(String(error)) }
@@ -181,8 +198,11 @@ function App() {
   }
   const safetyErrors = useMemo(() => compilerError ? [compilerError] : validateProgram({ version: 1, steps }), [steps, compilerError])
   const isSafeProgram = safetyErrors.length === 0
-  const flightStates = useMemo(() => simulateFlight(steps), [steps])
-  const path = useMemo(() => [initialFlightState, ...flightStates], [flightStates])
+  const course = useMemo(() => missionCourse(missionId), [missionId])
+  const startHeading = startHeadings[missionId] ?? 0
+  const initialFlightState = useMemo<FlightState>(() => ({ ...course.start, altitude: 0, heading: startHeading }), [course, startHeading])
+  const flightStates = useMemo(() => simulateFlight(steps, initialFlightState, course.scale), [steps, initialFlightState, course])
+  const path = useMemo(() => [initialFlightState, ...flightStates], [initialFlightState, flightStates])
   const photoCount = steps.filter((step) => step.type === 'photo').length
   const selectedMission = missions.find((mission) => mission.id === missionId) ?? missions[0]
   const displayState = activeStep >= 0
@@ -200,7 +220,7 @@ function App() {
       context.fillStyle = '#123e5d'; context.font = '16px sans-serif'
       context.fillText('シミュレーションの写真', 20, 35)
       const state = flightStates[activeStep]
-      context.fillText(`高さ ${state.altitude} cm / 向き ${state.heading}°`, 20, 65)
+      context.fillText(`高さ ${state.altitude} cm / 向き ${normalizeHeading(state.heading)}°`, 20, 65)
       context.beginPath(); context.arc(state.x * 3.2, state.y * 1.8, 8, 0, Math.PI * 2); context.fill()
       setSimulationPhotos(items => [...items.slice(-19), canvas.toDataURL('image/png')])
     }
@@ -212,6 +232,14 @@ function App() {
     setIsRunning(false)
     setActiveStep(-1)
     setRunState('idle')
+  }
+
+  function changeStartHeading(degrees: number) {
+    if (isRunning || hardwareBusy || !Number.isFinite(degrees)) return
+    resetRun()
+    setPreflight(false)
+    setChecks([false, false, false])
+    setStartHeadings(headings => ({ ...headings, [missionId]: degrees }))
   }
 
   function selectMission(nextMissionId: typeof missions[number]['id']) {
@@ -264,8 +292,17 @@ function App() {
         const totalTurn = steps.reduce((sum, step) => step.type === 'turn' ? sum + step.degrees : sum, 0)
         const leftTurn = steps.reduce((sum, step) => step.type === 'turn' && step.direction === 'left' ? sum + step.degrees : sum, 0)
         const hasMove = steps.some(step => step.type === 'move')
-        const reachedGoal = flightStates.some(state => state.y <= 45)
-        const passedOverMountain = flightStates.some(state => state.altitude >= 120 && state.y <= 55)
+        const target = course.goal ?? course.cone
+        const reachedGoal = target !== undefined && flightStates.some(state => Math.hypot(state.x - target.x, state.y - target.y) <= 10 * course.scale)
+        const passedOverMountain = course.mountain !== undefined && flightStates.some((state, index) => {
+          const previous = path[index]
+          const mountain = course.mountain!
+          const dx = state.x - previous.x, dy = state.y - previous.y
+          const lengthSquared = dx * dx + dy * dy
+          if (!lengthSquared || Math.min(previous.altitude, state.altitude) < 120) return false
+          const t = Math.max(0, Math.min(1, ((mountain.x - previous.x) * dx + (mountain.y - previous.y) * dy) / lengthSquared))
+          return Math.hypot(previous.x + t * dx - mountain.x, previous.y + t * dy - mountain.y) <= 10 * course.scale
+        })
 
         const achieved = (missionId === 'goal' && reachedGoal)
           || (missionId === 'over-mountain' && passedOverMountain && reachedGoal)
@@ -324,7 +361,8 @@ function App() {
           </div>
           <div className="mission-picker">
             <div className="mission-picker-title">ミッションをえらぶ</div>
-            {missions.map((mission) => (\n              <button
+            {missions.map((mission) => (
+              <button
                 key={mission.id}
                 className={`mission-option ${mission.id === missionId ? 'selected' : ''}`}
                 onClick={() => selectMission(mission.id)}
@@ -378,23 +416,39 @@ function App() {
           </section>
           <div className="panel-heading compact"><div><span className="section-kicker">飛行のようす</span><h2>体育館シミュレーター</h2></div></div>
           <div className="gym-map">
-            <div className="map-goal">🎯 ゴール</div>
-            <div className="map-mountain">⛰️ 山</div>
-            <div className="map-start">🚩 スタート</div>
+            {course.goal && <div className="map-goal" style={{ left: `${course.goal.x}%`, top: `${course.goal.y}%` }}>🎯 ゴール</div>}
+            {course.mountain && <div className="map-mountain" style={{ left: `${course.mountain.x}%`, top: `${course.mountain.y}%` }}>⛰️ 山</div>}
+            {course.cone && <div className="map-cone" style={{ left: `${course.cone.x}%`, top: `${course.cone.y}%` }}><svg width="26" height="30" viewBox="0 0 26 30" aria-hidden="true"><path d="M13 2 L23 26 H3 Z" fill="#f47721" /><path d="M9 12 H17 L19 18 H7 Z" fill="white" /><rect x="1" y="26" width="24" height="4" rx="1" fill="#b34f15" /></svg>三角コーン</div>}
+            <div className="map-start" style={{ left: `${course.start.x}%`, top: `${course.start.y + 8}%` }}>🚩 スタート</div>
             <svg className="flight-path" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
               <path d={pathToSvg(path)} />
               {path.map((point, index) => <circle key={`${point.x}-${point.y}-${index}`} cx={point.x} cy={point.y} r="1.2" />)}
             </svg>
             {isTakingSimulationPhoto && <div className="simulation-photo-effect" aria-hidden="true"><span>📸 パシャッ！</span></div>}
             <div className="drone" style={{ left: `${displayState.x}%`, top: `${displayState.y}%` }}>
-              <span className="drone-direction" style={{ transform: `rotate(${displayState.heading}deg)` }}>▲</span>
+              <svg className="drone-direction" width="24" height="24" viewBox="0 0 24 24" style={{ transform: `rotate(${displayState.heading}deg)` }} role="img" aria-label={`ドローンの向き ${normalizeHeading(displayState.heading)}度`}>
+                <path d="M12 2 L22 12 H16 V22 H8 V12 H2 Z" fill="currentColor" />
+              </svg>
             </div>
             <div className="altitude-label" style={{ left: `${displayState.x}%`, top: `${displayState.y}%` }}>{displayState.altitude} cm</div>
           </div>
+          <p className="course-description">{course.description}</p>
+          <fieldset className="start-heading-controls" disabled={isRunning || hardwareBusy}>
+            <legend>スタート時の向き</legend>
+            <div>
+              <button type="button" onClick={() => changeStartHeading(startHeading - 90)}>↶ 左90°</button>
+              <label>角度 <input type="number" min="0" max="359" step="1" value={normalizeHeading(startHeading)} onChange={event => {
+                const degrees = event.target.valueAsNumber
+                if (Number.isInteger(degrees) && degrees >= 0 && degrees < 360) changeStartHeading(degrees)
+              }} />°</label>
+              <button type="button" onClick={() => changeStartHeading(startHeading + 90)}>右90° ↷</button>
+            </div>
+            <p>0°は画面の上向きです。実機は同じ向きに置いてください。</p>
+          </fieldset>
           <div className="telemetry">
             <div><span>高さ</span><strong>{displayState.altitude} cm</strong></div>
             <div><span>写真</span><strong>{runState === 'complete' ? `${photoCount} まい` : '0 まい'}</strong></div>
-            <div><span>向き</span><strong>{displayState.heading}°</strong></div>
+            <div><span>向き</span><strong>{normalizeHeading(displayState.heading)}°</strong></div>
           </div>
           <div className="step-list">
             <div className="step-list-title">実行するじゅんばん</div>

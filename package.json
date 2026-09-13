@@ -1,7 +1,7 @@
 {
   "name": "muttello2",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.1.1",
   "type": "module",
   "main": "electron/main.cjs",
   "scripts": {
@@ -10,6 +10,7 @@
     "dev": "vite",
     "dev:app": "node scripts/dev-app.mjs",
     "tello:station": "node scripts/tello-station.mjs",
+    "tello:info": "node scripts/tello-info.mjs",
     "build": "vite build",
     "preview": "vite preview",
     "dist": "npm run build && electron-builder",
@@ -50,6 +51,7 @@
       "output": "release"
     },
     "mac": {
+      "artifactName": "${productName}-${version}-${arch}-mac.${ext}",
       "target": [
         "dmg",
         "zip"

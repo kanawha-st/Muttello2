@@ -46,6 +46,6 @@ export function validateProgram(program) {
     }
   }
   if (!landed) errors.push('離陸と着陸をつなげてください。')
-  if (seconds > 60) errors.push('プログラムを短くしてください（見積もり60秒以内）。')
+  if (seconds > 300) errors.push('プログラムを短くしてください（見積もり5分以内）。')
   return [...new Set(errors)]
 }
