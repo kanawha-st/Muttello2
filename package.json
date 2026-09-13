@@ -10,6 +10,7 @@
     "dev": "vite",
     "dev:app": "node scripts/dev-app.mjs",
     "tello:station": "node scripts/tello-station.mjs",
+    "tello:info": "node scripts/tello-info.mjs",
     "build": "vite build",
     "preview": "vite preview",
     "dist": "npm run build && electron-builder",
