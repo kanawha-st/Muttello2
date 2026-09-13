@@ -324,7 +324,8 @@ function App() {
           </div>
           <div className="mission-picker">
             <div className="mission-picker-title">ミッションをえらぶ</div>
-            {missions.map((mission) => (\n              <button
+            {missions.map((mission) => (
+              <button
                 key={mission.id}
                 className={`mission-option ${mission.id === missionId ? 'selected' : ''}`}
                 onClick={() => selectMission(mission.id)}
