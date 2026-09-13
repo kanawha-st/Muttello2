@@ -149,7 +149,11 @@ function App() {
 
   function saveProject() {
     if (!workspaceRef.current) return
-    const data = { version: 1, workspace: Blockly.serialization.workspaces.save(workspaceRef.current) }
+    const workspaces = {
+      ...missionWorkspacesRef.current,
+      [missionId]: Blockly.serialization.workspaces.save(workspaceRef.current),
+    }
+    const data = { version: 2, missionId, workspaces }
     const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }))
     const link = document.createElement('a'); link.href = url; link.download = 'muttello2.json'; link.click()
     setTimeout(() => URL.revokeObjectURL(url), 1000)
@@ -161,8 +165,13 @@ function App() {
     try {
       if (file.size > 1024 * 1024) throw new Error('ファイルは1MB以内にしてください。')
       const data = JSON.parse(await file.text())
-      if (data.version !== 1 || !data.workspace || typeof data.workspace !== 'object') throw new Error('対応していないプロジェクト形式です。')
-      Blockly.serialization.workspaces.load(data.workspace, workspace)
+      if (data.version !== 2 || !data.workspaces || typeof data.workspaces !== 'object') throw new Error('対応していないプロジェクト形式です。')
+      missionWorkspacesRef.current = data.workspaces
+      const targetMissionId = missions.some((mission) => mission.id === data.missionId) ? data.missionId : missions[0].id
+      const targetWorkspace = missionWorkspacesRef.current[targetMissionId]
+      workspace.clear()
+      if (targetWorkspace) Blockly.serialization.workspaces.load(targetWorkspace, workspace)
+      setMissionId(targetMissionId)
       extractSteps(workspace)
       resetRun()
     } catch (error) { Blockly.serialization.workspaces.load(previous, workspace); setHardwareMessage(String(error)) }
