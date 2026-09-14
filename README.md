@@ -1,6 +1,6 @@
 # Muttello2
 
-日本の小学生がTello EDUをブロックプログラミングで操作するための、Windows・macOS向けデスクトップアプリです。
+日本の小学生がTello EDUをブロックプログラミングで操作するための、Windows・macOS・Linux向けデスクトップアプリです。ChromebookのLinux環境への導入は[Chromebook向けガイド](docs/chromebook.md)を参照してください（実機検証は未実施）。
 
 Blocklyと体育館シミュレーターに加え、ElectronからTello EDUへ接続する実装を追加しています。実機・ファームウェアでの動作検証はまだ行っていません。
 

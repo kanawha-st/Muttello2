@@ -21,6 +21,10 @@ jobs:
             arch: x64
           - os: macos-15
             arch: arm64
+          - os: ubuntu-24.04
+            arch: x64
+          - os: ubuntu-24.04-arm
+            arch: arm64
     runs-on: ${{ matrix.os }}
 
     steps:
@@ -55,6 +59,10 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_IDENTITY_AUTO_DISCOVERY: false
 
+      - name: Build package for Linux
+        if: runner.os == 'Linux'
+        run: npx electron-builder --linux tar.gz --${{ matrix.arch }} --publish never
+
       - name: Upload binaries to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -62,5 +70,6 @@ jobs:
             release/*.exe
             release/*.dmg
             release/*.zip
+            release/*.tar.gz
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
