@@ -14,7 +14,17 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest, macos-latest]
+        include:
+          - os: windows-latest
+            arch: x64
+          - os: macos-15-intel
+            arch: x64
+          - os: macos-15
+            arch: arm64
+          - os: ubuntu-24.04
+            arch: x64
+          - os: ubuntu-24.04-arm
+            arch: arm64
     runs-on: ${{ matrix.os }}
 
     steps:
@@ -28,7 +38,24 @@ jobs:
           cache: 'npm'
 
       - name: Install dependencies
-        run: npm ci
+        shell: bash
+        run: |
+          # Retry the full install: ffmpeg-static downloads GitHub release assets
+          # in its install script, outside npm's registry fetch retry settings.
+          for attempt in 1 2 3; do
+            if npm ci; then
+              exit 0
+            else
+              status=$?
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "::error::npm ci failed after 3 attempts"
+              exit "$status"
+            fi
+            delay=$((attempt * 15))
+            echo "::warning::npm ci failed (attempt $attempt/3); retrying in ${delay}s"
+            sleep "$delay"
+          done
 
       - name: Build frontend
         shell: bash
@@ -43,11 +70,21 @@ jobs:
           CSC_IDENTITY_AUTO_DISCOVERY: false
 
       - name: Build package for macOS
-        if: matrix.os == 'macos-latest'
-        run: npx electron-builder --mac dmg zip --publish never
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          # Spotlight can keep the temporary DMG volume busy during detach.
+          sudo mdutil -a -i off
+          # Finish DMG creation before starting ZIP compression.
+          npx electron-builder --mac dmg --${{ matrix.arch }} --publish never
+          npx electron-builder --mac zip --${{ matrix.arch }} --publish never
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_IDENTITY_AUTO_DISCOVERY: false
+
+      - name: Build package for Linux
+        if: runner.os == 'Linux'
+        run: npx electron-builder --linux tar.gz --${{ matrix.arch }} --publish never
 
       - name: Upload binaries to GitHub Release
         uses: softprops/action-gh-release@v2
@@ -56,5 +93,6 @@ jobs:
             release/*.exe
             release/*.dmg
             release/*.zip
+            release/*.tar.gz
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

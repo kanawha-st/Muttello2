@@ -1,7 +1,7 @@
 {
   "name": "muttello2",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.1.4",
   "type": "module",
   "main": "electron/main.cjs",
   "scripts": {
@@ -10,10 +10,12 @@
     "dev": "vite",
     "dev:app": "node scripts/dev-app.mjs",
     "tello:station": "node scripts/tello-station.mjs",
+    "tello:info": "node scripts/tello-info.mjs",
     "build": "vite build",
     "preview": "vite preview",
     "dist": "npm run build && electron-builder",
     "dist:mac": "npm run build && electron-builder --mac dmg zip --publish never",
+    "dist:linux": "npm run build && electron-builder --linux tar.gz --publish never",
     "start": "npm run build && electron .",
     "test": "node --test",
     "dist:win": "npm run build && electron-builder --win --x64 --publish never"
@@ -50,12 +52,19 @@
       "output": "release"
     },
     "mac": {
+      "artifactName": "${productName}-${version}-${arch}-mac.${ext}",
       "target": [
         "dmg",
         "zip"
       ],
       "category": "public.app-category.education",
       "identity": null
+    },
+    "linux": {
+      "target": ["tar.gz"],
+      "executableName": "muttello2",
+      "category": "Education",
+      "artifactName": "${productName}-${version}-${arch}-linux.${ext}"
     },
     "win": {
       "target": [

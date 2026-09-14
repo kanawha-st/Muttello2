@@ -196,8 +196,8 @@ export const missions = [
     number: 6,
     title: 'タイムアタック',
     shortTitle: 'タイムアタック',
-    description: 'スピードブロックを使って速度を上げ、すばやくゴールまで飛ばそう！',
-    goal: 'スピードを上げてゴールまで飛ばす',
+    description: 'コーンの中心線から右50cmの位置から、前方3mにある三角コーンを目指してすばやく飛ばそう！',
+    goal: 'スピードを上げて三角コーンまで飛ばす',
     icon: '⚡',
   },
 ] as const
